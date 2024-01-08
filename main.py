@@ -7,22 +7,12 @@ import json
 from umqttsimple import MQTTClient
 import secrets
 
-### WIFI SETUP
-ssid = secrets.ssid
-password = secrets.password
-
 ### MQTT SETUP
 mqtt_server = secrets.mqtt_server
 client_id = ubinascii.hexlify(machine.unique_id()).decode()
 cid = client_id[-2:]
 
-msg_interval_usual = 180 # Usual update interval
-msg_interval_fast = 2 # Update interval during movement
 ping_interval = 60
-sleep_timer = 3600
-
-message_interval = msg_interval_usual # Do not change this
-last_message = -message_interval
 last_ping = 0
 
 ### Home Assistant Auto Discovery setup
@@ -93,12 +83,10 @@ class Device:
 
 
 def connect_wifi():
-  global ssid, password
-    
   station.active(False)
   time.sleep(0.1)
   station.active(True)
-  station.connect(ssid, password)
+  station.connect(secrets.ssid, secrets.password)
 
   ### Wait to connect to WiFi (with timeout)
   counter = 0
@@ -111,8 +99,11 @@ def connect_wifi():
   print('Connection successful')
   print(station.ifconfig())
 
+def restart():
+  print('Failed to connect to MQTT broker. Restarting...')
+  machine.reset()
+
 def mqtt_sub_cb(topic, msg):
-  global msg_interval_fast, msg_interval_usual, message_interval
   topic = topic.decode('ascii')
   msg = msg.decode('ascii')
   print((topic, msg))
@@ -131,10 +122,6 @@ def connect_and_subscribe():
   print('Connected to MQTT broker')
   return client
 
-def restart_and_reconnect():
-  print('Failed to connect to MQTT broker. Restarting...')
-  machine.reset()
-
 station = network.WLAN(network.STA_IF)
 
 button = Button('P0_4')
@@ -145,7 +132,7 @@ connect_wifi()
 try:
   client = connect_and_subscribe()
 except OSError as e:
-  restart_and_reconnect()
+  restart()
 
 # Publish discovery message for Home Assistant
 for entity in discovery_entities:
@@ -160,8 +147,8 @@ while True:
     ### Handle device specific stuff in device loop
     device.loop()
     
-    now = time.time()
     ### Server ping (required for Mosquitto >= 2.0!)
+    now = time.time()
     if (now - last_ping) > ping_interval:
         client.ping()
         last_ping = now
@@ -171,4 +158,4 @@ while True:
 
   except OSError as e:
     print(e)
-    restart_and_reconnect()
+    restart()
