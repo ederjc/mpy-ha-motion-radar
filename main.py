@@ -20,7 +20,7 @@ last_ping = 0
 ### Reference: https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
 
 discovery_prefix = 'homeassistant'
-node_id = f'motion_sensor_{client_id}'
+node_id = f'motion_sensor_{cid}'
 
 discovery_device = {
   "name":f"Motion Sensor {cid}",
@@ -30,58 +30,72 @@ discovery_device = {
   "sw_version": '0.1.0'
   }
 
-discovery_entities = [
-    {
-        'discovery_topic':f'{discovery_prefix}/button/{node_id}',
-        'conf': {
-            "name":"Identify",
-            "unique_id":"identify",
-            "icon":"mdi:button-pointer",
-            "entity_category":"config",
-            "command_topic":f'{discovery_prefix}/button/{node_id}/command/identify',
-            "payload_press":"ON",
-            "device": discovery_device
-            }
-        },
-    {
+discovery_entities = {
+    'td':{
         'discovery_topic':f'{discovery_prefix}/binary_sensor/{node_id}',
         'conf': {
-            "name":"User Button",
-            "unique_id":"userbutton",
-            "state_topic":f'{discovery_prefix}/binary_sensor/{node_id}/state/button',
-            "device": discovery_device
+            "name":"Target Detected",
+            "unique_id":"td",
+            "state_topic":f'{discovery_prefix}/binary_sensor/{node_id}/state/td',
+            "device": discovery_device,
+            "device_class":"motion"
+            }
+        },
+    'pd':{
+        'discovery_topic':f'{discovery_prefix}/binary_sensor/{node_id}',
+        'conf': {
+            "name":"Target Approaching",
+            "unique_id":"pd",
+            "state_topic":f'{discovery_prefix}/binary_sensor/{node_id}/state/pd',
+            "device": discovery_device,
+            "availability_topic":f'{discovery_prefix}/binary_sensor/{node_id}/avl/pd',
+            "icon":"mdi:ray-end-arrow"
             }
         }
-    ]
+}
 
-class Button:
-  def __init__(self, pin):
-    self._pin = pin
-    self._isPressed = False
-    self._btn = machine.Pin(self._pin, machine.Pin.IN, machine.Pin.PULL_UP)
+class BinarySensor:
+  def __init__(self, entity, pin, invert=False, pull=None):
+    self._entity = entity
+    self._pin = machine.Pin(pin, machine.Pin.IN, pull)
+    self._invert = invert
+    self._isActive = False
+    self._isAvailable = False
   def read(self):
-    return not self._btn.value()
+    return (self._pin.value() == 1) != self._invert
   def event(self):
-    if self.read() and not self._isPressed:
-      self._isPressed = True
+    if self.read() and not self._isActive:
+      self._isActive = True
       return 'ON'
-    if not self.read() and self._isPressed:
-      self._isPressed = False
+    if not self.read() and self._isActive:
+      self._isActive = False
       return 'OFF'
     return False
+  def available(self, available):
+    if available and not self._isAvailable:
+      self._isAvailable = True
+      available = 'online'
+    elif not available and self._isAvailable:
+      self._isAvailable = False
+      available = 'offline'
+    else:
+      return
+    client.publish(discovery_entities[self._entity]['conf']['availability_topic'], available)
+  def update(self):
+    e = self.event()
+    if e: client.publish(discovery_entities[self._entity]['conf']['state_topic'], e)
 
-class Device:
-  def __init__(self, userLedPin):
-    self._userLed = machine.Pin(userLedPin, machine.Pin.OUT)
-  def identify(self):
-    self._userLed.on()
-    time.sleep(1)
-    self._userLed.off()
-  def loop(self):
-    e = button.event()
-    if e:
-      client.publish(discovery_entities[1]['conf']['state_topic'], e)
-
+class RadarSensor:
+  def __init__(self, pinTD, pinPD):
+    self.targetDet = BinarySensor('td', 'P6_5', invert=True, pull=machine.Pin.PULL_DOWN)
+    self.phaseDet = BinarySensor('pd', 'P6_4', invert=False, pull=machine.Pin.PULL_DOWN)
+  def update(self):
+    self.targetDet.update()
+    if self.targetDet.read():
+      self.phaseDet.available(True)
+      self.phaseDet.update()
+    else:
+      self.phaseDet.available(False)
 
 def connect_wifi():
   station.active(False)
@@ -104,29 +118,16 @@ def restart():
   print('Failed to connect to MQTT broker. Restarting...')
   machine.reset()
 
-def mqtt_sub_cb(topic, msg):
-  topic = topic.decode('ascii')
-  msg = msg.decode('ascii')
-  print((topic, msg))
-  if topic == discovery_entities[0]['conf']['command_topic']:
-    if msg == 'ON':
-      device.identify()
-
 def connect_and_subscribe():
   global client_id, mqtt_server
 
   client = MQTTClient(client_id, mqtt_server, user=secrets.mqtt_user, password=secrets.mqtt_password, keepalive=ping_interval+30)
-  client.set_callback(mqtt_sub_cb)
   client.connect()
-  client.subscribe( discovery_entities[0]['conf']['command_topic'] )
   
-  print('Connected to MQTT broker')
+  print('Connected to MQTT broker.')
   return client
 
 station = network.WLAN(network.STA_IF)
-
-button = Button('P0_4')
-device = Device('P13_7')
 
 connect_wifi()
 
@@ -135,8 +136,11 @@ try:
 except OSError as e:
   restart()
 
+# Create Radar Sensor entity
+radarSensor = RadarSensor('P6_5', 'P6_4')
+
 # Publish discovery message for Home Assistant
-for entity in discovery_entities:
+for entity in discovery_entities.values():
   client.publish(f'{entity["discovery_topic"]}/{entity["conf"]["unique_id"]}/config', json.dumps(entity['conf']))
 
 while True:
@@ -145,8 +149,8 @@ while True:
         connect_wifi()
     client.check_msg()
 
-    ### Handle device specific stuff in device loop
-    device.loop()
+    ### Handle sensor updates
+    radarSensor.update()
     
     ### Server ping (required for Mosquitto >= 2.0!)
     now = time.time()
