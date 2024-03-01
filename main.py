@@ -12,6 +12,7 @@ mqtt_server = secrets.mqtt_server
 client_id = ubinascii.hexlify(machine.unique_id()).decode()
 cid = client_id[-2:]
 
+### Ping interval for Mosquitto >= 2.0
 ping_interval = 60
 last_ping = 0
 
