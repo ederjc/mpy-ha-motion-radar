@@ -4,7 +4,7 @@ import network
 import time
 import json
 
-from umqttsimple import MQTTClient
+from umqtt.simple import MQTTClient
 import secrets
 
 ### MQTT SETUP
@@ -86,8 +86,8 @@ class BinarySensor:
 
 class RadarSensor:
   def __init__(self, pinTD, pinPD):
-    self.targetDet = BinarySensor('td', 'P6_5', invert=True, pull=machine.Pin.PULL_DOWN)
-    self.phaseDet = BinarySensor('pd', 'P6_4', invert=False, pull=machine.Pin.PULL_DOWN)
+    self.targetDet = BinarySensor('td', pinTD, invert=True, pull=machine.Pin.PULL_DOWN)
+    self.phaseDet = BinarySensor('pd', pinPD, invert=False, pull=machine.Pin.PULL_DOWN)
   def update(self):
     self.targetDet.update()
     if self.targetDet.read():
@@ -136,7 +136,7 @@ except OSError as e:
   restart()
 
 # Create Radar Sensor entity
-radarSensor = RadarSensor('P6_5', 'P6_4')
+radarSensor = RadarSensor('P9_0', 'P6_5')
 
 # Publish discovery message for Home Assistant
 for entity in discovery_entities.values():
