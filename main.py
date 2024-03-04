@@ -9,8 +9,6 @@ import secrets
 
 ### MQTT SETUP
 mqtt_server = secrets.mqtt_server
-client_id = ubinascii.hexlify(machine.unique_id()).decode()
-cid = client_id[-2:]
 
 ### Ping interval for Mosquitto >= 2.0
 ping_interval = 60
@@ -18,10 +16,10 @@ last_ping = 0
 
 ### Home Assistant Auto Discovery setup
 ### Reference: https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery
+client_id = ubinascii.hexlify(machine.unique_id()).decode()
+cid = client_id[-2:]
 
-discovery_prefix = 'homeassistant'
 node_id = f'motion_sensor_{cid}'
-
 discovery_device = {
   "name":f"Motion Sensor {cid}",
   "identifiers": node_id,
@@ -30,6 +28,7 @@ discovery_device = {
   "sw_version": '0.1.0'
   }
 
+discovery_prefix = 'homeassistant'
 discovery_entities = {
     'td':{
         'discovery_topic':f'{discovery_prefix}/binary_sensor/{node_id}',
