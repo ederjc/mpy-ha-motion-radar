@@ -1,0 +1,5 @@
+ssid = 'your wifi ssid'
+password = 'your wifi password'
+mqtt_server = 'your mqtt broker ip address'
+mqtt_user = 'your mqtt broker user name'
+mqtt_password = 'your mqtt broker password'
